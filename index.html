@@ -1,0 +1,272 @@
+<html>
+<head>
+    <style>
+        #display, #map {
+            display: inline-block;
+            font-size: 10px; 
+            font-family: 'Lucida Console', Monaco, monospace;
+        }
+
+        #display {
+            height: 60em;
+            background: black;
+            color: white;
+            border: 5px solid black;
+        }
+        
+        #map { 
+            height: 40em;
+        }
+
+    </style>
+</head>
+<body>
+<table><tr>
+    <td valign="top">
+        <pre width="60" id="map"></pre>
+    </td>
+    <td>
+        <pre width="120" id="display"></pre>
+    </td>
+</tr>
+</table>
+
+<div id="status"></div>
+<script>
+
+const map = [
+'############################################################',
+'#                                                          #',
+'#                        ####                ####          #',
+'#                           #                   #          #',
+'#                           #         #         #          #',
+'#         ############      #         #         #          #',
+'#         #                           #                    #',
+'#         #                           #                    #',
+'#         #                           #        #############',
+'#         #           #               #                    #',
+'#         #           #               #                    #',
+'#                     #               #                    #',
+'#                ##############       #############        #',
+'#                             #                   #        #',
+'#                             #                   #        #',
+'#######################       #                   #        #',
+'#                             #                   #        #',
+'#                             #                   #        #',
+'#                             #                   #        #',
+'#               #                                          #',
+'#               #                                          #',
+'#               #                       #                  #',
+'#               #################       ###########        #',
+'#               #                       #                  #',
+'###########     #                       #                  #',
+'#               #                       #                  #',
+'#               #                       #                  #',
+'#               #            ######################        #',
+'#               #                       #                  #',
+'#               #                       #                  #',
+'#    ############                       #                  #',
+'#               #                       #        #         #',
+'#               #                       #        #         #',
+'#                                       #        #         #',
+'#                                       #        #         #',
+'#         ############     ##########   #        #         #',
+'#                                                #         #',
+'#                                              ###         #',
+'#                                                          #',
+'############################################################'].map(r => r.split(''));
+
+// 3d screen
+const screen3dWidth = 120; 
+const screen3dHeight = 60; 
+const screen = []; 
+
+function cls() {
+    for(let i=0;i<screen3dHeight;i++) {
+        screen[i] = [];
+        for(let j=0;j<screen3dWidth;j++) {
+            screen[i][j] = ' ';
+        }
+    }
+}
+cls();
+
+// map screen
+const mapHeight = map.length; 
+const mapWidth = map[0].length;
+
+// Player coords data
+const player = {
+     x: 34,y: 25,
+     angle: Math.PI,
+     speed: 0.1,
+     fieldOfView: Math.PI / 3.5,
+     viewDistance: 20,
+     turnSpeed: Math.PI/180
+}
+
+function render3dScreen() {
+    let s = '';
+    for(let i=0;i<screen3dHeight;i++) {
+        for(let j=0;j<screen3dWidth;j++) {
+            s += screen[i][j];
+        }
+        s += '\n'
+    }
+    return s
+}
+
+
+function renderMap() {
+    let viewPoints = {};
+    for(let a0 = player.angle-player.fieldOfView/2; a0 < player.angle+player.fieldOfView/2; a0 += Math.PI/180) {
+        let t0 = true;
+        for(let k=1;t0 && k<player.viewDistance;k++) {            
+            let xx0 = Math.floor(player.x + Math.sin(a0)*k)
+            let yy0 = Math.floor(player.y + Math.cos(a0)*k)
+            if(t0 && map[yy0][xx0]===' ') {
+                viewPoints[xx0+':'+yy0] = '·'
+            } else {
+                t0 = false;
+            }
+        }
+    }
+
+    let m = '';
+    for(let i=0;i<mapHeight;i++) {
+        for(let j=mapWidth-1;j>=0;j--) {
+            // Draw player
+            if(Math.floor(player.x)==j && Math.floor(player.y) == i) {
+                m += '@';
+            }  // draw view points
+            else if (viewPoints[j+':'+i]) { 
+                m += viewPoints[j+':'+i];
+            }  // draw map
+            else {
+                m += map[i][j];
+            }
+        }
+        m += '\n'
+    }
+    return m;
+}
+
+function refresh() {
+    document.getElementById("display").innerText = render3dScreen();
+    document.getElementById("map").innerText = renderMap();
+}
+
+function rayCast() {
+    for (let x = 0; x < screen3dWidth; x++)  {
+        let fRayAngle = (player.angle - player.fieldOfView/2.0) + (x / screen3dWidth) * player.fieldOfView; // Направление луча
+        // Находим расстояние до стенки в направлении fRayAngle 
+    
+        let fDistanceToWall = 0.0; // Расстояние до препятствия в направлении fRayAngle
+        let bHitWall = false; // Достигнул ли луч стенку
+    
+        let fEyeX = Math.sin(fRayAngle); // Координаты единичного вектора fRayAngle
+        let fEyeY = Math.cos(fRayAngle);
+    
+        while (!bHitWall && fDistanceToWall < player.viewDistance) // Пока не столкнулись со стеной
+        {                                           // Или не вышли за радиус видимости
+            fDistanceToWall += 0.1;
+    
+            let nTestX = Math.floor(player.x + fEyeX*fDistanceToWall); // Точка на игровом поле
+            let nTestY = Math.floor(player.y + fEyeY*fDistanceToWall); // в которую попал луч
+    
+            if (nTestX < 0 || nTestX >= mapWidth || nTestY < 0 || nTestY >= mapHeight) { // Если мы вышли за зону
+                bHitWall = true;
+                fDistanceToWall = player.viewDistance;
+            } else if (map[nTestY][nTestX] == '#')
+                bHitWall = true;
+    
+            //Вычисляем координаты начала и конца стенки по формулам (1) и (2)
+            let nCeiling = screen3dHeight/2.0 - screen3dHeight / fDistanceToWall; 
+            let nFloor = screen3dHeight - nCeiling;
+         
+            let nShade;
+         
+            if (fDistanceToWall <= player.viewDistance / 3.0)        nShade = '█'; // Если стенка близко, то рисуем 
+            else if (fDistanceToWall < player.viewDistance / 2.0)    nShade = '▓'; // светлую полоску
+            else if (fDistanceToWall < player.viewDistance / 1.5)    nShade = '▒'; // Для отдалённых участков 
+            else if (fDistanceToWall < player.viewDistance)          nShade = '░'; // рисуем более темную
+            else                                        nShade = ' ';
+
+            for (let y = 0; y < screen3dHeight; y++) // При заданном X проходим по всем Y
+            {
+                // В этом цикле рисуется вертикальная полоска
+                if (y <= nCeiling) {
+                    let sShade = ' ';
+                    let b = (y+x%3-1.5) / (screen3dHeight / 2.0);
+                    if (b < 0.25)        sShade = '+';
+                    else if (b < 0.5)    sShade = ':';
+                    else if (b < 0.75)   sShade = '.';
+                    else if (b < 0.9)    sShade = ' ';
+                    else                 sShade = ' ';
+                    screen[y][x] = sShade;
+                //    screen[y][x] = ' ';
+                } else if(y > nCeiling && y <= nFloor)
+                    screen[y][x] = nShade;
+                else {
+                    // То же самое с полом - более близкие части рисуем более заметными символами
+                    let b = 1.0 - ((y-x%3+1.5) - screen3dHeight / 2.0) / (screen3dHeight / 2.0);
+                    if (b < 0.15)        nShade = '@';
+                    else if (b < 0.25)        nShade = '#';
+                    else if (b < 0.5)    nShade = 'x';
+                    else if (b < 0.75)   nShade = '~';
+                    else if (b < 0.9)    nShade = '-';
+                    else                 nShade = ' ';
+                    screen[y][x] = nShade;
+                }            
+            }
+        }
+    }
+}
+
+
+let dir = {
+    ArrowUp: false,
+    ArrowDown: false,
+    ArrowLeft: false,
+    ArrowRight: false
+};
+
+document.addEventListener('keydown', (event) => {
+  const keyName = event.key;
+    dir[keyName] = true;
+}, false);
+
+document.addEventListener('keyup', (event) => {
+  const keyName = event.key;
+  dir[keyName] = false;
+}, false);
+
+setInterval(() => {
+    if(dir.ArrowLeft) player.angle -= player.turnSpeed;
+    if(dir.ArrowRight) player.angle += player.turnSpeed;
+    
+    let dx,dy; dx = dy = 0;
+    if(dir.ArrowUp) {
+        dx = player.speed*Math.sin(player.angle)
+        dy = player.speed*Math.cos(player.angle)
+    }
+    if(dir.ArrowDown) {
+        dx = -player.speed*Math.sin(player.angle)
+        dy = -player.speed*Math.cos(player.angle)
+    }
+
+    if(map[Math.floor(player.y+dy)][Math.floor(player.x+dx)] !== '#') {
+        player.x += dx
+        player.y += dy
+    }
+
+    rayCast();
+
+    refresh();
+}, 5);
+
+
+</script>
+
+</body>
+</html>
